@@ -19,13 +19,11 @@ package org.smartdata.hdfs.action;
 
 import org.apache.hadoop.hdfs.DFSInputStream;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
-import org.apache.hadoop.io.compress.snappy.SnappyDecompressor;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.smartdata.action.MockActionStatusReporter;
 import org.smartdata.hdfs.MiniClusterHarness;
-import org.smartdata.hdfs.SmartDecompressorStream;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -51,6 +49,9 @@ public class TestCompressionAction extends MiniClusterHarness {
     Map<String, String> args = new HashMap<>();
     args.put(compressionAction.FILE_PATH, filePath);
     args.put(compressionAction.BUF_SIZE, "" + bufferSize);
+    args.put(CompressionAction.COMPRESS_IMPL, "Lz4");
+//    args.put(CompressionAction.COMPRESS_IMPL,"Bzip2");
+//    args.put(CompressionAction.COMPRESS_IMPL,"Zlib");
     compressionAction.init(args);
     compressionAction.run();
   }
@@ -60,6 +61,9 @@ public class TestCompressionAction extends MiniClusterHarness {
     Map<String, String> args = new HashMap<>();
     args.put(CompressionAction.FILE_PATH, "/Test");
     args.put(CompressionAction.BUF_SIZE, "1024");
+    args.put(CompressionAction.COMPRESS_IMPL, "Lz4");
+//    args.put(CompressionAction.COMPRESS_IMPL,"Bzip2");
+//    args.put(CompressionAction.COMPRESS_IMPL,"Zlib");
     CompressionAction compressionAction = new CompressionAction();
     compressionAction.init(args);
     compressionAction.setStatusReporter(new MockActionStatusReporter());
@@ -70,6 +74,9 @@ public class TestCompressionAction extends MiniClusterHarness {
 
     String filePath = "/testCompressFile/fadsfa/213";
     int bufferSize = 1024*128;
+    String compressionImpl = "Lz4";
+//    String compressionImpl = "Bzip2";
+//    String compressionImpl = "Zlib";
     byte[] bytes = TestCompressionAction.BytesGenerator.get(bufferSize);
 
     short replication = 4;

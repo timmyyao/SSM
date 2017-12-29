@@ -28,25 +28,31 @@ public class SmartFileCompressionInfo {
 
   private String fileName;
   private int bufferSize;
+  private String compressionImpl;
   private long originalLength;
   private long compressedLength;
   private Long[] originalPos;
   private Long[] compressedPos;
 
   public SmartFileCompressionInfo(String fileName, int bufferSize) {
-    this(fileName, bufferSize, 0, 0, new Long[0], new Long[0]);
+    this(fileName, bufferSize, "snappy", 0, 0, new Long[0], new Long[0]);
+  }
+
+  public SmartFileCompressionInfo(String fileName, int bufferSize, String compressionImpl) {
+    this(fileName, bufferSize, compressionImpl, 0, 0, new Long[0], new Long[0]);
   }
 
   public SmartFileCompressionInfo(String fileName, int bufferSize,
       Long[] originalPos, Long[] compressedPos) {
-    this(fileName, bufferSize, 0, 0, originalPos, compressedPos);
+    this(fileName, bufferSize, "snappy", 0, 0, originalPos, compressedPos);
   }
 
-  public SmartFileCompressionInfo(String fileName, int bufferSize,
-      long originalLength, long compressedLength, Long[] originalPos,
-      Long[] compressedPos) {
+  public SmartFileCompressionInfo(String fileName, int bufferSize, String compressionImpl,
+                                  long originalLength, long compressedLength, Long[] originalPos,
+                                  Long[] compressedPos) {
     this.fileName = fileName;
     this.bufferSize = bufferSize;
+    this.compressionImpl = compressionImpl;
     this.originalLength = originalLength;
     this.compressedLength = compressedLength;
     this.originalPos = originalPos;
@@ -83,6 +89,14 @@ public class SmartFileCompressionInfo {
 
   public Long[] getCompressedPos() {
     return compressedPos;
+  }
+
+  public String getcompressionImpl() {
+    return compressionImpl;
+  }
+
+  public void setcompressionImpl(String compressionImpl) {
+    compressionImpl = compressionImpl;
   }
 
   /**
@@ -192,6 +206,7 @@ public class SmartFileCompressionInfo {
   public static class Builder {
     private String fileName = null;
     private int bufferSize = 0;
+    private String compressionImpl = "snappy";
     private long originalLength;
     private long compressedLength;
     private Long[] originalPos;
@@ -208,6 +223,11 @@ public class SmartFileCompressionInfo {
 
     public Builder setBufferSize(int bufferSize) {
       this.bufferSize = bufferSize;
+      return this;
+    }
+
+    public Builder setcompressionImpl(String compressionImpl) {
+      this.compressionImpl = compressionImpl;
       return this;
     }
 
@@ -242,8 +262,8 @@ public class SmartFileCompressionInfo {
     }
 
     public SmartFileCompressionInfo build() {
-      return new SmartFileCompressionInfo(fileName, bufferSize, originalLength,
-          compressedLength, originalPos, compressedPos);
+      return new SmartFileCompressionInfo(fileName, bufferSize, compressionImpl,
+        originalLength, compressedLength, originalPos, compressedPos);
     }
   }
 }

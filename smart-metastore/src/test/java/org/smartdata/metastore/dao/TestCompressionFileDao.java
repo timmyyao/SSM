@@ -69,8 +69,9 @@ public class TestCompressionFileDao extends TestDaoUtil {
   public void testGetCompressionInfo() throws Exception {
     long originalLen = 100;
     long compressedLen = 50;
+    String compressionImpl = "Lz4";
     SmartFileCompressionInfo compressionInfo = new SmartFileCompressionInfo(
-      "/test1", 131072, originalLen, compressedLen,
+      "/test1", 131072, compressionImpl, originalLen, compressedLen,
         originalPos.toArray(new Long[0]), compressedPos.toArray(new Long[0]));
     SmartFileCompressionInfo compressionInfo2 = new SmartFileCompressionInfo(
       "/test2", 131072, originalPos.toArray(new Long[0]),

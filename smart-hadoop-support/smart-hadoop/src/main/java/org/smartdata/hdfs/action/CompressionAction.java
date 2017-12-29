@@ -44,17 +44,21 @@ import java.util.Map;
             + " $file "
             + CompressionAction.BUF_SIZE
             + " $size "
+            + CompressionAction.COMPRESS_IMPL
+            + " $impl "
 )
 public class CompressionAction extends HdfsAction {
   private static final Logger LOG =
       LoggerFactory.getLogger(CompressionAction.class);
 
   public static final String BUF_SIZE = "-bufSize";
+  public static final String COMPRESS_IMPL = "-compressionImpl";
 
   private String filePath;
   private int bufferSize = 10 * 1024 * 1024;
   private int UserDefinedbuffersize;
   private int Calculatedbuffersize;
+  private String compressionImpl = "snappy";
 
   private SmartFileCompressionInfo compressionInfo;
 
@@ -64,6 +68,9 @@ public class CompressionAction extends HdfsAction {
     this.filePath = args.get(FILE_PATH);
     if (args.containsKey(BUF_SIZE)) {
       this.UserDefinedbuffersize = Integer.valueOf(args.get(BUF_SIZE));
+    }
+    if (args.containsKey(COMPRESS_IMPL)){
+      this.compressionImpl = args.get(COMPRESS_IMPL);
     }
   }
 
@@ -79,7 +86,7 @@ public class CompressionAction extends HdfsAction {
     }
 
     // Generate compressed file
-    String compressedFileName = "/tmp/ssm" + filePath + "." + System.currentTimeMillis() + ".ssm_snappy";
+    String compressedFileName = "/tmp/ssm" + filePath + "." + System.currentTimeMillis() + ".ssm_compress";
     HdfsFileStatus srcFile = dfsClient.getFileInfo(filePath);
     short replication = srcFile.getReplication();
     long blockSize = srcFile.getBlockSize();
@@ -98,7 +105,8 @@ public class CompressionAction extends HdfsAction {
     bufferSize = Math.max(Math.max(UserDefinedbuffersize,Calculatedbuffersize),bufferSize);
     
     DFSInputStream dfsInputStream = dfsClient.open(filePath);
-    compressionInfo = new SmartFileCompressionInfo(filePath, bufferSize);
+    compressionInfo = new SmartFileCompressionInfo(filePath, bufferSize, compressionImpl);
+    compressionInfo.setcompressionImpl(compressionImpl);
     compressionInfo.setOriginalLength(srcFile.getLen());
     OutputStream compressedOutputStream = dfsClient.create(compressedFileName,
       true, replication, blockSize);
