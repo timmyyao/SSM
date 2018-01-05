@@ -17,68 +17,58 @@
  */
 package org.smartdata.hdfs;
 
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.hdfs.DFSConfigKeys;
-import org.apache.hadoop.io.compress.*;
+import org.apache.hadoop.io.compress.Compressor;
 import org.apache.hadoop.io.compress.bzip2.Bzip2Compressor;
 import org.apache.hadoop.io.compress.bzip2.Bzip2Factory;
 import org.apache.hadoop.io.compress.lz4.Lz4Compressor;
 import org.apache.hadoop.io.compress.snappy.SnappyCompressor;
 import org.apache.hadoop.io.compress.zlib.ZlibCompressor;
+import org.apache.hadoop.util.NativeCodeLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smartdata.action.SmartAction;
 import org.smartdata.conf.SmartConf;
-import org.smartdata.conf.SmartConfKeys;
 
-import java.util.ArrayList;
-import java.util.List;
 /**
  * This class decide which compressor type for SmartCompressorStream 
  */
-public class CompressionCodec  {
+public class CompressionCodec {
   static final Logger LOG = LoggerFactory.getLogger(SmartAction.class);
-  
-  private static String[] compressionImplArray = new String[0];
   SmartConf conf = new SmartConf();
   
   /**
    *  Create a compressor
    */
-  public Compressor createCompressor(int bufferSize, String compressionImpl){
-//    conf.set(SmartConfKeys.SMART_COMPRESSION_IMPL,"Lz4,Zlib" );
-    conf.set(SmartConfKeys.SMART_COMPRESSION_IMPL,"Lz4,Bzip2,Zlib" );
-    compressionImplArray = conf.getStrings(SmartConfKeys.SMART_COMPRESSION_IMPL);
-    Boolean b = typeConfigured(compressionImplArray,compressionImpl);
-    if(typeConfigured(compressionImplArray,compressionImpl)){
+  public Compressor createCompressor(int bufferSize, String compressionImpl) {
       switch (compressionImpl){
         case "Lz4" :
           return  new Lz4Compressor(bufferSize);
+
         case "Bzip2" :
-          return  new Bzip2Compressor(9,
-                                      30,
-                                      bufferSize);
-//          return  new Bzip2Compressor();
+          String hadoopnativePath;
+          if (!(System.getenv("HADOOP_HOME") == null)) {
+            hadoopnativePath = System.getenv("HADOOP_HOME") + "/lib/native/libhadoop.so";
+          }else {
+            hadoopnativePath = System.getenv("HADOOP_COMMON_HOME") + "/lib/native/libhadoop.so";
+          }
+          System.load(hadoopnativePath);
+          if (NativeCodeLoader.isNativeCodeLoaded())
+            if (Bzip2Factory.isNativeBzip2Loaded(conf)) {
+              return new Bzip2Compressor(Bzip2Factory.getBlockSize(conf),
+                                         Bzip2Factory.getWorkFactor(conf),
+                                         bufferSize);
+            } else {
+              LOG.error("Failed to load/initialize native-bzip2 library");
+            }
+
         case "Zlib" :
           return new ZlibCompressor(ZlibCompressor.CompressionLevel.DEFAULT_COMPRESSION,
                                     ZlibCompressor.CompressionStrategy.DEFAULT_STRATEGY,
                                     ZlibCompressor.CompressionHeader.DEFAULT_HEADER,
                                     bufferSize);
+
         default:
           return new SnappyCompressor(bufferSize);
-      }      
-    }else{
-      LOG.warn("This compressionImpl: " + compressionImpl + " is not defined in configuration,use the default Snappycompressor");
-      return new SnappyCompressor(bufferSize); 
+      }
     }
-  }
-  
-  /**
-   *  Judge the compressionImpl is configured or not
-   */
-  public static boolean typeConfigured(String[] compressionImplArray, String compressionImpl) {
-    return ArrayUtils.contains(compressionImplArray,compressionImpl);
-  }
 }

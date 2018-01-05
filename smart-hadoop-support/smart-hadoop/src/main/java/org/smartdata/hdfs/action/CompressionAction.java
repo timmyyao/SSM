@@ -20,18 +20,15 @@ package org.smartdata.hdfs.action;
 import com.google.gson.Gson;
 import org.apache.hadoop.hdfs.DFSInputStream;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.smartdata.action.ActionException;
 import org.smartdata.action.Utils;
 import org.smartdata.action.annotation.ActionSignature;
 import org.smartdata.hdfs.SmartCompressorStream;
 import org.smartdata.model.SmartFileCompressionInfo;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Map;
+import java.util.*;
 
 /**
  * This action convert a file to a compressed file.
@@ -48,11 +45,11 @@ import java.util.Map;
             + " $impl "
 )
 public class CompressionAction extends HdfsAction {
-  private static final Logger LOG =
-      LoggerFactory.getLogger(CompressionAction.class);
 
   public static final String BUF_SIZE = "-bufSize";
   public static final String COMPRESS_IMPL = "-compressionImpl";
+  private static List<String> compressionImplList = Arrays.asList(new String[]{
+    "Lz4","Bzip2","Zlib","snappy"});
 
   private String filePath;
   private int bufferSize = 10 * 1024 * 1024;
@@ -84,6 +81,9 @@ public class CompressionAction extends HdfsAction {
     if (!dfsClient.exists(filePath)) {
       throw new ActionException("ReadFile Action fails, file doesn't exist!");
     }
+    if(!compressionImplList.contains(compressionImpl)){
+      throw new ActionException("Action fails, this compressionImpl isn't supported!");
+    }
 
     // Generate compressed file
     String compressedFileName = "/tmp/ssm" + filePath + "." + System.currentTimeMillis() + ".ssm_compress";
@@ -97,9 +97,9 @@ public class CompressionAction extends HdfsAction {
     //Determine the actual buffersize
     if(UserDefinedbuffersize < bufferSize || UserDefinedbuffersize < Calculatedbuffersize){
       if(bufferSize <= Calculatedbuffersize){
-        LOG.warn("User defined buffersize is too small,use the calculated buffersize:" + Calculatedbuffersize );
+        appendLog("User defined buffersize is too small,use the calculated buffersize:" + Calculatedbuffersize );
       }else{
-        LOG.warn("User defined buffersize is too small,use the default buffersize:" + bufferSize );
+        appendLog("User defined buffersize is too small,use the default buffersize:" + bufferSize );
       }
     }
     bufferSize = Math.max(Math.max(UserDefinedbuffersize,Calculatedbuffersize),bufferSize);
@@ -121,7 +121,7 @@ public class CompressionAction extends HdfsAction {
     dfsClient.rename(compressedFileName, filePath);
   }
 
-  private void compress(InputStream inputStream, OutputStream outputStream) throws IOException {
+  private void compress(InputStream inputStream, OutputStream outputStream) throws Exception {
     SmartCompressorStream smartCompressorStream = new SmartCompressorStream(
         inputStream, outputStream, bufferSize, compressionInfo);
     smartCompressorStream.convert();

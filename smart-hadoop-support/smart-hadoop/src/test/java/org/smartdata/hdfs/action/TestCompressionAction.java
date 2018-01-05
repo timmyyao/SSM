@@ -17,7 +17,6 @@
  */
 package org.smartdata.hdfs.action;
 
-import org.apache.hadoop.hdfs.DFSInputStream;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.junit.Assert;
 import org.junit.Before;

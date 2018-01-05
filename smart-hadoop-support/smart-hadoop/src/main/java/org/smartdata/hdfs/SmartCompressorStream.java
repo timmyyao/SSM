@@ -18,6 +18,7 @@
 package org.smartdata.hdfs;
 
 import org.apache.hadoop.io.compress.Compressor;
+import org.apache.hadoop.io.compress.snappy.SnappyCompressor;
 import org.smartdata.model.SmartFileCompressionInfo;
 
 import java.io.IOException;
@@ -46,7 +47,7 @@ public class SmartCompressorStream {
   private List<Long> compressedPositions = new ArrayList<>();
 
   public SmartCompressorStream(InputStream inputStream, OutputStream outputStream,
-      int bufferSize, SmartFileCompressionInfo compressionInfo) {
+      int bufferSize, SmartFileCompressionInfo compressionInfo) throws Exception {
     this.out = outputStream;
     this.in = inputStream;
     this.compressionInfo = compressionInfo;
@@ -56,6 +57,9 @@ public class SmartCompressorStream {
     int overHead = bufferSize / 6 + 32;
     buffer = new byte[bufferSize + overHead];
     this.compressor = compressionCodec.createCompressor(bufferSize + overHead,compressionInfo.getcompressionImpl());
+    if(compressor instanceof SnappyCompressor){
+      compressionInfo.setcompressionImpl("snappy");
+    }
   }
 
   /**
