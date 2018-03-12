@@ -398,23 +398,23 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
 
   public void insertUpdateStoragesTable(StorageCapacity[] storages)
       throws MetaStoreException {
-    mapStorageCapacity = null;
     try {
       storageDao.insertUpdateStoragesTable(storages);
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
+    updateCache();
   }
 
   public void insertUpdateStoragesTable(List<StorageCapacity> storages)
       throws MetaStoreException {
-    mapStorageCapacity = null;
     try {
       storageDao.insertUpdateStoragesTable(
           storages.toArray(new StorageCapacity[storages.size()]));
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
+    updateCache();
   }
 
   public void insertUpdateStoragesTable(StorageCapacity storage)
@@ -429,8 +429,10 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
 
     Map<String, StorageCapacity> ret = new HashMap<>();
     if (mapStorageCapacity != null) {
-      for (String key : mapStorageCapacity.keySet()) {
-        ret.put(key, mapStorageCapacity.get(key));
+      synchronized (storageDao) {
+        for (String key : mapStorageCapacity.keySet()) {
+          ret.put(key, mapStorageCapacity.get(key));
+        }
       }
     }
     return ret;
@@ -508,12 +510,12 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
         mapStoragePolicyNameId.put(mapStoragePolicyIdName.get(key), key);
       }
     }
-    if (mapStorageCapacity == null) {
-      try {
+    try {
+      synchronized (storageDao) {
         mapStorageCapacity = storageDao.getStorageTablesItem();
-      } catch (Exception e) {
-        throw new MetaStoreException(e);
       }
+    } catch (Exception e) {
+      throw new MetaStoreException(e);
     }
   }
 
@@ -902,16 +904,19 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   }
 
 
-  public synchronized void insertCmdlets(CmdletInfo[] commands)
+  public void insertCmdlets(CmdletInfo[] commands)
       throws MetaStoreException {
+    if (commands.length == 0) {
+      return;
+    }
     try {
-      cmdletDao.insert(commands);
+      cmdletDao.replace(commands);
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
   }
 
-  public synchronized void insertCmdlet(CmdletInfo command)
+  public void insertCmdlet(CmdletInfo command)
       throws MetaStoreException {
     try {
       // Update if exists
@@ -974,10 +979,10 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
     }
   }
 
-  public boolean updateCmdlet(long cid, long rid, CmdletState state)
+  public boolean updateCmdlet(long cid, CmdletState state)
       throws MetaStoreException {
     try {
-      return cmdletDao.update(cid, rid, state.getValue()) >= 0;
+      return cmdletDao.update(cid, state.getValue()) >= 0;
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
@@ -1032,20 +1037,24 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
     }
   }
 
-  public synchronized void insertActions(ActionInfo[] actionInfos)
+  public void insertActions(ActionInfo[] actionInfos)
       throws MetaStoreException {
     try {
-      actionDao.insert(actionInfos);
+      actionDao.replace(actionInfos);
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
   }
 
-  public synchronized void insertAction(ActionInfo actionInfo)
+  public void insertAction(ActionInfo actionInfo)
       throws MetaStoreException {
     LOG.debug("Insert Action ID {}", actionInfo.getActionId());
     try {
-      actionDao.insert(actionInfo);
+      if (getActionById(actionInfo.getActionId()) != null) {
+        actionDao.update(actionInfo);
+      } else {
+        actionDao.insert(actionInfo);
+      }
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
@@ -1115,7 +1124,7 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
     }
   }
 
-  public synchronized void updateActions(ActionInfo[] actionInfos)
+  public void updateActions(ActionInfo[] actionInfos)
       throws MetaStoreException {
     if (actionInfos == null || actionInfos.length == 0) {
       return;
@@ -1538,18 +1547,25 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   }
 
   public synchronized void checkTables() throws MetaStoreException {
-    Connection conn = getConnection();
     try {
-      if (!MetaStoreUtils.isTableSetExist(conn)) {
+      int num = getTablesNum(MetaStoreUtils.TABLESET);
+      if (num == 0) {
         LOG.info("The table set required by SSM does not exist. "
                 + "The configured database will be formatted.");
         formatDataBase();
+      } else if (num < MetaStoreUtils.TABLESET.length) {
+        LOG.error("One or more tables required by SSM are missing! "
+                + "You can restart SSM with -format option or configure another database.");
+        System.exit(1);
       }
     } catch (Exception e) {
       throw new MetaStoreException(e);
-    } finally {
-      closeConnection(conn);
     }
+  }
+
+  public int getTablesNum(String tableSet[]) throws MetaStoreException {
+    Connection conn = getConnection();
+    return MetaStoreUtils.getTableSetNum(conn, tableSet);
   }
 
   public synchronized void formatDataBase() throws MetaStoreException {

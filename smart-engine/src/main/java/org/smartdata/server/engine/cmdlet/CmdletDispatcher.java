@@ -18,20 +18,20 @@
 package org.smartdata.server.engine.cmdlet;
 
 import com.google.common.collect.ListMultimap;
-import com.google.common.eventbus.Subscribe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.smartdata.SmartContext;
+import org.smartdata.action.ActionException;
 import org.smartdata.conf.SmartConfKeys;
+import org.smartdata.model.CmdletState;
 import org.smartdata.model.ExecutorType;
 import org.smartdata.model.LaunchAction;
 import org.smartdata.model.action.ActionScheduler;
+import org.smartdata.protocol.message.ActionStatus;
+import org.smartdata.protocol.message.CmdletStatus;
 import org.smartdata.server.engine.CmdletManager;
-import org.smartdata.server.engine.EngineEventBus;
 import org.smartdata.server.engine.cmdlet.message.LaunchCmdlet;
-import org.smartdata.server.engine.message.AddNodeMessage;
 import org.smartdata.server.engine.message.NodeMessage;
-import org.smartdata.server.engine.message.RemoveNodeMessage;
 
 import java.io.IOException;
 import java.util.List;
@@ -58,6 +58,7 @@ public class CmdletDispatcher {
   private int[] cmdExecSrvInstsSlotsLeft;
   private Map<Long, ExecutorType> dispatchedToSrvs;
   private boolean disableLocalExec;
+  private boolean logDispResult;
 
   // TODO: to be refined
   private final int defaultSlots;
@@ -91,7 +92,6 @@ public class CmdletDispatcher {
     cmdExecSrvTotalInsts = 0;
     cmdExecSrvInstsSlotsLeft = new int[ExecutorType.values().length];
     dispatchedToSrvs = new ConcurrentHashMap<>();
-    EngineEventBus.register(this);
 
     disableLocalExec = smartContext.getConf().getBoolean(
         SmartConfKeys.SMART_ACTION_LOCAL_EXECUTION_DISABLED_KEY,
@@ -104,6 +104,9 @@ public class CmdletDispatcher {
     this.index = 0;
 
     schExecService = Executors.newScheduledThreadPool(1);
+    logDispResult = smartContext.getConf().getBoolean(
+        SmartConfKeys.SMART_CMDLET_DISPATCHER_LOG_DISP_RESULT_KEY,
+        SmartConfKeys.SMART_CMDLET_DISPATCHER_LOG_DISP_RESULT_DEFAULT);
   }
 
   public void registerExecutorService(CmdletExecutorService executorService) {
@@ -152,14 +155,19 @@ public class CmdletDispatcher {
       return false;
     }
 
+    updateCmdActionStatus(cmdlet);
+
     String id = selected.execute(cmdlet);
+
     updateSlotsLeft(selected.getExecutorType().ordinal(), -1);
     dispatchedToSrvs.put(cmdlet.getCmdletId(), selected.getExecutorType());
 
-    LOG.info(
-        String.format(
-            "Dispatching cmdlet->[%s] to executor service %s : %s",
-            cmdlet.getCmdletId(), selected.getExecutorType(), id));
+    if (logDispResult) {
+      LOG.info(
+          String.format(
+              "Dispatching cmdlet->[%s] to executor service %s : %s",
+              cmdlet.getCmdletId(), selected.getExecutorType(), id));
+    }
     return true;
   }
 
@@ -207,6 +215,23 @@ public class CmdletDispatcher {
     return launchCmdlet;
   }
 
+  private void updateCmdActionStatus(LaunchCmdlet cmdlet) {
+    try {
+      for (LaunchAction action : cmdlet.getLaunchActions()) {
+        ActionStatus actionStatus = new ActionStatus(
+                action.getActionId(), System.currentTimeMillis());
+        cmdletManager.onActionStatusUpdate(actionStatus);
+      }
+      CmdletStatus cmdletStatus = new CmdletStatus(cmdlet.getCmdletId(),
+              System.currentTimeMillis(), CmdletState.DISPATCHED);
+      cmdletManager.onCmdletStatusUpdate(cmdletStatus);
+    } catch (IOException e) {
+      LOG.info("update status failed.", e);
+    } catch (ActionException e) {
+      LOG.info("update action status failed.", e);
+    }
+  }
+
   private class DispatchTask implements Runnable {
     private final CmdletDispatcher dispatcher;
     private long lastInfo = System.currentTimeMillis();
@@ -214,7 +239,8 @@ public class CmdletDispatcher {
     private int statFail = 0;
     private int statDispatched = 0;
     private int statNoMoreCmdlet = 0;
-    private int statNoExecutorOrFull = 0;
+    private int statFull = 0;
+    private long lastReportNoExecutor = 0;
 
     public DispatchTask(CmdletDispatcher dispatcher) {
       this.dispatcher = dispatcher;
@@ -225,23 +251,33 @@ public class CmdletDispatcher {
       long curr = System.currentTimeMillis();
       if (curr - lastInfo >= 5000) {
         if (!(statDispatched == 0 && statRound == statNoMoreCmdlet)) {
-          LOG.info(
-              "timeInterval={} statRound={} statFail={} statDispatched={} "
-                  + "statNoMoreCmdlet={} statNoExecutorOrFull={} pendingCmdlets={}",
-              curr - lastInfo, statRound, statFail, statDispatched, statNoMoreCmdlet,
-              statNoExecutorOrFull, pendingCmdlets.size());
+          if (cmdExecSrvTotalInsts != 0 || statFull != 0) {
+            LOG.info("timeInterval={} statRound={} statFail={} statDispatched={} "
+                    + "statNoMoreCmdlet={} statFull={} pendingCmdlets={} numExecutor={}",
+                curr - lastInfo, statRound, statFail, statDispatched, statNoMoreCmdlet,
+                statFull, pendingCmdlets.size(), cmdExecSrvTotalInsts);
+          } else {
+            if (curr - lastReportNoExecutor >= 600 * 1000L) {
+              LOG.info("No cmdlet executor. pendingCmdlets={}", pendingCmdlets.size());
+              lastReportNoExecutor = curr;
+            }
+          }
         }
         statRound = 0;
         statFail = 0;
         statDispatched = 0;
-        statNoExecutorOrFull = 0;
+        statFull = 0;
         statNoMoreCmdlet = 0;
         lastInfo = curr;
       }
       statRound++;
 
-      if (cmdExecSrvTotalInsts == 0 || !dispatcher.canDispatchMore()) {
-        statNoExecutorOrFull++;
+      if (cmdExecSrvTotalInsts == 0) {
+        return;
+      }
+
+      if (!dispatcher.canDispatchMore()) {
+        statFull++;
         return;
       }
 
@@ -291,17 +327,7 @@ public class CmdletDispatcher {
     }
   }
 
-  @Subscribe
-  public void onAddNodeMessage(AddNodeMessage msg) {
-    onNodeMessage(msg, true);
-  }
-
-  @Subscribe
-  public void onRemoveNodeMessage(RemoveNodeMessage msg) {
-    onNodeMessage(msg, false);
-  }
-
-  private void onNodeMessage(NodeMessage msg, boolean isAdd) {
+  public void onNodeMessage(NodeMessage msg, boolean isAdd) {
     if (disableLocalExec && msg.getNodeInfo().getExecutorType() == ExecutorType.LOCAL) {
       return;
     }
@@ -337,11 +363,13 @@ public class CmdletDispatcher {
   }
 
   public void start() {
+    CmdletDispatcherHelper.getInst().register(this);
     schExecService.scheduleAtFixedRate(
         new DispatchTask(this), 200, 100, TimeUnit.MILLISECONDS);
   }
 
   public void stop() {
+    CmdletDispatcherHelper.getInst().unregister();
     schExecService.shutdown();
   }
 }
