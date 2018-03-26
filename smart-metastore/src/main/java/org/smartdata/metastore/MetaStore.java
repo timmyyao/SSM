@@ -66,6 +66,7 @@ import org.smartdata.model.GlobalConfig;
 import org.smartdata.model.NormalFileState;
 import org.smartdata.model.RuleInfo;
 import org.smartdata.model.RuleState;
+import org.smartdata.model.S3FileState;
 import org.smartdata.model.StorageCapacity;
 import org.smartdata.model.StoragePolicy;
 import org.smartdata.model.SystemInfo;
@@ -398,23 +399,23 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
 
   public void insertUpdateStoragesTable(StorageCapacity[] storages)
       throws MetaStoreException {
+    mapStorageCapacity = null;
     try {
       storageDao.insertUpdateStoragesTable(storages);
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
-    updateCache();
   }
 
   public void insertUpdateStoragesTable(List<StorageCapacity> storages)
       throws MetaStoreException {
+    mapStorageCapacity = null;
     try {
       storageDao.insertUpdateStoragesTable(
           storages.toArray(new StorageCapacity[storages.size()]));
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
-    updateCache();
   }
 
   public void insertUpdateStoragesTable(StorageCapacity storage)
@@ -423,16 +424,13 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   }
 
   public Map<String, StorageCapacity> getStorageCapacity() throws MetaStoreException {
-    if (mapStorageCapacity == null) {
-      updateCache();
-    }
+    updateCache();
 
     Map<String, StorageCapacity> ret = new HashMap<>();
-    if (mapStorageCapacity != null) {
-      synchronized (storageDao) {
-        for (String key : mapStorageCapacity.keySet()) {
-          ret.put(key, mapStorageCapacity.get(key));
-        }
+    Map<String, StorageCapacity> currentMapStorageCapacity = mapStorageCapacity;
+    if (currentMapStorageCapacity != null) {
+      for (String key : currentMapStorageCapacity.keySet()) {
+        ret.put(key, currentMapStorageCapacity.get(key));
       }
     }
     return ret;
@@ -440,6 +438,7 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
 
   public void deleteStorage(String storageType) throws MetaStoreException {
     try {
+      mapStorageCapacity = null;
       storageDao.deleteStorage(storageType);
     } catch (Exception e) {
       throw new MetaStoreException(e);
@@ -449,8 +448,17 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   public StorageCapacity getStorageCapacity(
       String type) throws MetaStoreException {
     updateCache();
+    Map<String, StorageCapacity> currentMapStorageCapacity = mapStorageCapacity;
+    while (currentMapStorageCapacity == null) {
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        LOG.error(ex.getMessage());
+      }
+      currentMapStorageCapacity = mapStorageCapacity;
+    }
     try {
-      return mapStorageCapacity.get(type);
+      return currentMapStorageCapacity.get(type);
     } catch (EmptyResultDataAccessException e) {
       return null;
     } catch (Exception e) {
@@ -461,6 +469,7 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   public synchronized boolean updateStoragesTable(String type,
       Long capacity, Long free) throws MetaStoreException {
     try {
+      mapStorageCapacity = null;
       return storageDao.updateStoragesTable(type, capacity, free);
     } catch (Exception e) {
       throw new MetaStoreException(e);
@@ -510,12 +519,13 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
         mapStoragePolicyNameId.put(mapStoragePolicyIdName.get(key), key);
       }
     }
-    try {
-      synchronized (storageDao) {
+
+    if (mapStorageCapacity == null) {
+      try {
         mapStorageCapacity = storageDao.getStorageTablesItem();
+      } catch (Exception e) {
+        throw new MetaStoreException(e);
       }
-    } catch (Exception e) {
-      throw new MetaStoreException(e);
     }
   }
 
@@ -1005,6 +1015,14 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
     }
   }
 
+  public void batchDeleteCmdlet(List<Long> cids) throws MetaStoreException {
+    try {
+      cmdletDao.batchDelete(cids);
+    } catch (Exception e) {
+      throw new MetaStoreException(e);
+    }
+  }
+
   /**
    * Delete finished cmdlets before given timestamp, actions belonging to these cmdlets
    * will also be deleted. Cmdlet's generate_time is used for comparison.
@@ -1078,6 +1096,14 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
   public void deleteCmdletActions(long cmdletId) throws MetaStoreException {
     try {
       actionDao.deleteCmdletActions(cmdletId);
+    } catch (Exception e) {
+      throw new MetaStoreException(e);
+    }
+  }
+
+  public void batchDeleteCmdletActions(List<Long> cmdletIds) throws MetaStoreException {
+    try {
+      actionDao.batchDeleteCmdletActions(cmdletIds);
     } catch (Exception e) {
       throw new MetaStoreException(e);
     }
@@ -2074,6 +2100,7 @@ public class MetaStore implements CopyMetaService, CmdletMetaService, BackupMeta
       case COMPRESSION:
         break;
       case S3:
+        fileState = new S3FileState(path);
         break;
       default:
     }

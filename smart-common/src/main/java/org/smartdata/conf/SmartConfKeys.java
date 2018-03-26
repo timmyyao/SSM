@@ -42,6 +42,9 @@ public class SmartConfKeys {
       "smart.namespace.fetcher.ignore.unsuccessive.inotify.event";
   public static final boolean SMART_NAMESPACE_FETCHER_IGNORE_UNSUCCESSIVE_INOTIFY_EVENT_DEFAULT =
       false;
+  public static final String SMART_NAMESPACE_FETCHER_NUM_CONSUMERS_KEY =
+      "smart.namespace.fetcher.num.consumers";
+  public static final int SMART_NAMESPACE_FETCHER_NUM_CONSUMERS_DEFAULT = 3;
 
   // Configure keys for Alluxio
   public static final String SMART_ALLUXIO_MASTER_HOSTNAME_KEY = "smart.alluxio.master.hostname";
@@ -112,6 +115,8 @@ public class SmartConfKeys {
   public static final String SMART_CMDLET_DISPATCHER_LOG_DISP_RESULT_KEY =
       "smart.cmdlet.dispatcher.log.disp.result";
   public static final boolean SMART_CMDLET_DISPATCHER_LOG_DISP_RESULT_DEFAULT = true;
+  public static final String SMART_CMDLET_DISPATCHERS_KEY = "smart.cmdlet.dispatchers";
+  public static final int SMART_CMDLET_DISPATCHERS_DEFAULT = 3;
 
   // Action
   public static final String SMART_ACTION_MOVE_THROTTLE_MB_KEY = "smart.action.move.throttle.mb";
